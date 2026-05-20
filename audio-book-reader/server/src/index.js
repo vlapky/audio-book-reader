@@ -22,6 +22,16 @@ function normalizeRate(rate) {
   return `${percent >= 0 ? '+' : ''}${percent}%`;
 }
 
+function sanitizeTtsText(text) {
+  return [...text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()]
+    .slice(0, 4500)
+    .join('');
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ ok: true });
 });
@@ -50,7 +60,12 @@ app.post('/api/synthesize', async (req, res) => {
   const id = batchId || nanoid(10);
 
   try {
-    const tts = new EdgeTTS(text.slice(0, 4500), voice, { rate: normalizeRate(rate) });
+    const safeText = sanitizeTtsText(text);
+    if (!safeText) {
+      res.status(400).json({ error: 'Текст не содержит символов, подходящих для озвучки.' });
+      return;
+    }
+    const tts = new EdgeTTS(safeText, voice, { rate: normalizeRate(rate) });
     const result = await tts.synthesize();
     const audioBuffer = Buffer.from(await result.audio.arrayBuffer());
     res.json({ id, mimeType: 'audio/mpeg', audioBase64: audioBuffer.toString('base64') });
